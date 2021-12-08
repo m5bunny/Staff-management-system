@@ -32,7 +32,9 @@ public class Screen
     {
         System.out.println(title);
         System.out.println(error);
+        System.out.println("--------------------------------------------------------------");
         main.show();
+        System.out.println("--------------------------------------------------------------");
         System.out.println(control);
     }
 
