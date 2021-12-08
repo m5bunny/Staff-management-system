@@ -4,8 +4,12 @@ import pl.edu.zut.my49469.www.staffManagementSystem.model.Worker;
 import pl.edu.zut.my49469.www.staffManagementSystem.view.*;
 
 import java.awt.image.AreaAveragingScaleFilter;
+import java.io.*;
 import java.lang.reflect.Executable;
+import java.nio.file.Files;
+import java.time.LocalDate;
 import java.util.*;
+import java.util.zip.*;
 
 public class Controller
 {
@@ -214,6 +218,116 @@ public class Controller
                         ss.popCurrent();
                         break;
                     case '4':
+                        ss.pushScreen(new Screen("Backup", "", "[B]ack, [A]gain", new Content() {
+                            @Override
+                            public void show() throws Exception {
+                                Scanner scanner = new Scanner(System.in);
+                                System.out.printf("%-30s:\t\t", "[S]ave/[O]pen ([B]ack)");
+                                char choose = scanner.next().charAt(0);
+                                if (choose == 'b')
+                                    return;
+                                if (choose == 's')
+                                {
+                                    System.out.printf("%-30s:\t\t", "[Z]ip/[G]zip");
+                                    choose = scanner.next().charAt(0);
+                                    String fileName = LocalDate.now().toString();
+                                    if (choose == 'z')
+                                    {
+                                        fileName += ".zip";
+                                        System.out.printf("%-30s:\t\t%s\n", "File name", fileName);
+                                        System.out.printf("%-30s\t\t\n", "[S]ave/[B]ack");
+                                        choose = scanner.next().charAt(0);
+                                        if (choose == 's')
+                                        {
+                                            File file = new File(fileName);
+                                            try (FileOutputStream fos = new FileOutputStream(file);
+                                                 ZipOutputStream zos = new ZipOutputStream(fos);)
+                                            {
+                                                ZipEntry ze = new ZipEntry("Backup");
+                                                zos.putNextEntry(ze);
+                                                ObjectOutputStream oos = new ObjectOutputStream(zos);
+                                                oos.writeObject(cs.getWorkersHashMap());
+                                                oos.close();
+                                            }
+                                        }
+                                    }
+                                    else if (choose == 'g')
+                                    {
+                                        fileName += ".gzip";
+                                        System.out.printf("%-30s:\t\t%s\n", "File name:", fileName);
+                                        System.out.printf("%-30s\t\t\n", "[S]ave/[B]ack");
+                                        choose = scanner.next().charAt(0);
+                                        if (choose == 's')
+                                        {
+                                            File file = new File(fileName);
+                                            try (FileOutputStream fos = new FileOutputStream(file);
+                                                 GZIPOutputStream gos = new GZIPOutputStream(fos);
+                                                 ObjectOutputStream oos = new ObjectOutputStream(gos))
+                                            {
+                                                 oos.writeObject(cs.getWorkersHashMap());
+                                            }
+                                        }
+                                    }
+                                    else
+                                        throw new Exception("There is not such an option, try again");
+                                }
+                                else if (choose == 'o')
+                                {
+                                    System.out.printf("%-30s:\t\t", "File name");
+                                    String filename = scanner.next();
+                                    try (FileInputStream fis = new FileInputStream(filename))
+                                    {
+                                        if (filename.contains(".gzip"))
+                                        {
+                                            try(GZIPInputStream gis = new GZIPInputStream(fis);
+                                                ObjectInputStream ois = new ObjectInputStream(gis))
+                                            {
+                                                cs.setWorkersHashMap((HashMap<String, Worker>)ois.readObject());
+                                            }
+                                        }
+                                        else if(filename.contains(".zip"))
+                                        {
+                                            File temp = Files.createTempFile("", "").toFile();
+                                            try (ZipInputStream zis = new ZipInputStream(new BufferedInputStream(new FileInputStream(filename)));
+                                                 BufferedInputStream bis = new BufferedInputStream(new FileInputStream(temp)))
+                                            {
+                                                zis.getNextEntry();
+                                                FileOutputStream fos = new FileOutputStream(temp);
+                                                byte[] buffer = new byte[1024];
+                                                int len;
+                                                while ((len = zis.read(buffer)) > 0) {
+                                                    fos.write(buffer, 0, len);
+                                                }
+                                                fos.close();
+                                                ObjectInputStream ois = new ObjectInputStream(bis);
+                                                cs.setWorkersHashMap((HashMap<String, Worker>)ois.readObject());
+                                            }
+
+                                            temp.delete();
+                                        }
+                                    }
+                                }
+                                else
+                                    throw new Exception("There is not such an option, try again");
+                            }
+                        }));
+                        boolean backupEnd = false;
+                        do {
+                            try {
+                                choose = ss.actCurrent();
+                                if (choose != 'a' && choose != 'b')
+                                    throw new Exception("There is not such an option, try again");
+                                if (choose == 'b')
+                                    backupEnd = true;
+                                ss.addError("");
+                            }
+                            catch (Exception e)
+                            {
+                                ss.addError(e.getMessage());
+                            }
+                        }
+                        while (!backupEnd);
+                        ss.popCurrent();
                         break;
                     case 'x':
                         isEnd = true;

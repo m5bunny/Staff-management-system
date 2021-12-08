@@ -25,6 +25,11 @@ public class ControlSystem
         workersHashMap.put(_id, new Director(_id, _firstName, _lastName, _salary, _businessPhone, _serviceBonus, _cartNumber, _expenseLimit));
     }
 
+    public void setWorkersHashMap(HashMap<String, Worker> _workersHashMap)
+    {
+        workersHashMap = _workersHashMap;
+    }
+
     public static ControlSystem getInstance()
     {
         if (instance == null)
