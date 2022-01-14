@@ -2,30 +2,32 @@ package pl.edu.zut.my49469.www.staffManagementSystem.model;
 
 import java.io.Serializable;
 import java.util.HashMap;
+import java.util.Hashtable;
 
-public class ControlSystem
-{
+public class ControlSystem {
     private static ControlSystem instance;
-    private HashMap<String, Worker> workersHashMap;
+    private Hashtable<String, Worker> workersHashMap;
 
-    private ControlSystem()
-    {
-        workersHashMap = new HashMap<>();
+    private ControlSystem() {
+        workersHashMap = new Hashtable<>();
     }
 
     public void addWorker(String _id, String _firstName, String _lastName, long _salary, String _businessPhone,
-                     String _position, int _commission, long _commissionLimit)
-    {
+                          String _position, int _commission, long _commissionLimit) {
         workersHashMap.put(_id, new Seller(_id, _firstName, _lastName, _salary, _businessPhone, _position, _commission, _commissionLimit));
     }
 
     public void addWorker(String _id, String _firstName, String _lastName, long _salary, String _businessPhone,
-                 long _serviceBonus, String _cartNumber, long _expenseLimit)
-    {
+                          long _serviceBonus, String _cartNumber, long _expenseLimit) {
         workersHashMap.put(_id, new Director(_id, _firstName, _lastName, _salary, _businessPhone, _serviceBonus, _cartNumber, _expenseLimit));
     }
 
-    public void setWorkersHashMap(HashMap<String, Worker> _workersHashMap)
+    public void addWorker(Worker worker)
+    {
+        workersHashMap.put(worker.getId(), worker);
+    }
+
+    public void setWorkersHashMap(Hashtable<String, Worker> _workersHashMap)
     {
         workersHashMap = _workersHashMap;
     }
@@ -36,7 +38,7 @@ public class ControlSystem
             instance = new ControlSystem();
         return instance;
     }
-    public HashMap<String, Worker> getWorkersHashMap() {
+    public Hashtable<String, Worker> getWorkersHashMap() {
         return workersHashMap;
     }
     public int getSize()

@@ -9,6 +9,7 @@ import java.lang.reflect.Executable;
 import java.nio.file.Files;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.zip.*;
 
 public class Controller
@@ -96,7 +97,7 @@ public class Controller
     private static void showStaff()
     {
         char choose;
-        HashMap<String, Worker> workers = cs.getWorkersHashMap();
+        Hashtable<String, Worker> workers = cs.getWorkersHashMap();
         String[] keyArr = workers.keySet().toArray(new String[workers.keySet().size()]);
         boolean end = false;
         int index = 0;
@@ -278,40 +279,50 @@ public class Controller
                     System.out.printf("%-30s:\t\t", "[Z]ip/[G]zip");
                     choose = scanner.next().charAt(0);
                     String fileName = LocalDate.now().toString();
-                    if (choose == 'z')
+                    if (choose == 'z' || choose == 'g')
                     {
-                        fileName += ".zip";
+                        char fileChoose = choose;
                         System.out.printf("%-30s:\t\t%s\n", "File name", fileName);
                         System.out.printf("%-30s\t\t\n", "[S]ave/[B]ack");
+                        File dir = new File(fileName);
+                        dir.mkdir();
+                        String fileExtension = (fileChoose == 'z') ? ".zip" : ".gzip";
                         choose = scanner.next().charAt(0);
                         if (choose == 's')
                         {
-                            File file = new File(fileName);
-                            try (FileOutputStream fos = new FileOutputStream(file);
-                                 ZipOutputStream zos = new ZipOutputStream(fos);)
+                            Executor executor = Executors.newFixedThreadPool(10);
+                            Hashtable<String, Worker> workers = cs.getWorkersHashMap();
+                            CompletableFuture<Void> [] futures = new CompletableFuture[workers.size()];
+
+                            int i = 0;
+                            for (Worker worker : workers.values())
                             {
-                                ZipEntry ze = new ZipEntry("Backup");
-                                zos.putNextEntry(ze);
-                                ObjectOutputStream oos = new ObjectOutputStream(zos);
-                                oos.writeObject(cs.getWorkersHashMap());
-                                oos.close();
+                                String finalFileName = fileName + "/" + i + fileExtension;
+                                futures[i] = CompletableFuture.runAsync(() -> {
+                                    try {
+                                        if (fileChoose == 'z') {
+                                            saveZIP(worker, finalFileName);
+                                        } else
+                                            saveGZIP(worker, finalFileName);
+                                    } catch (Exception e) {
+                                        throw new CompletionException(e);
+                                    }
+                                }, executor);
+                                ++i;
                             }
-                        }
-                    }
-                    else if (choose == 'g')
-                    {
-                        fileName += ".gzip";
-                        System.out.printf("%-30s:\t\t%s\n", "File name:", fileName);
-                        System.out.printf("%-30s\t\t\n", "[S]ave/[B]ack");
-                        choose = scanner.next().charAt(0);
-                        if (choose == 's')
-                        {
-                            File file = new File(fileName);
-                            try (FileOutputStream fos = new FileOutputStream(file);
-                                 GZIPOutputStream gos = new GZIPOutputStream(fos);
-                                 ObjectOutputStream oos = new ObjectOutputStream(gos))
+                            try {
+                                CompletableFuture.allOf(futures).get();
+                            } catch (InterruptedException | ExecutionException e)
                             {
-                                oos.writeObject(cs.getWorkersHashMap());
+                                throw e;
+                            }
+                            ((ExecutorService) executor).shutdown();
+                            for (int j = 0; j < futures.length; ++j)
+                            {
+                                if (futures[j].isCompletedExceptionally())
+                                {
+                                    throw new Exception("Thread error!");
+                                }
                             }
                         }
                     }
@@ -322,35 +333,53 @@ public class Controller
                 {
                     System.out.printf("%-30s:\t\t", "File name");
                     String filename = scanner.next();
-                    try (FileInputStream fis = new FileInputStream(filename))
+                    String fileExtension;
+                    if (filename.contains(".gzip"))
                     {
-                        if (filename.contains(".gzip"))
+                        fileExtension = ".gzip";
+                        filename = filename.substring(0, filename.length() - 5);
+                    }
+                    else if(filename.contains(".zip"))
+                    {
+                        fileExtension = ".zip";
+                        filename = filename.substring(0, filename.length() - 4);
+                    }
+                    else
+                        throw new Exception("Wrong file extension");
+                    Executor executor = Executors.newFixedThreadPool(10);
+                    try {
+                        File dir = new File(filename);
+                        File [] files = dir.listFiles();
+                        List<CompletableFuture<Worker>> futures = new ArrayList<>();
+                        for (File file : files)
                         {
-                            try(GZIPInputStream gis = new GZIPInputStream(fis);
-                                ObjectInputStream ois = new ObjectInputStream(gis))
+                            if (file.getName().contains(fileExtension))
                             {
-                                cs.setWorkersHashMap((HashMap<String, Worker>)ois.readObject());
+                                futures.add(CompletableFuture.supplyAsync(
+                                        () -> {
+                                            try {
+                                                if (fileExtension.equals(".zip"))
+                                                    return readZIP(file);
+                                                else
+                                                    return readGZIP(file);
+                                            } catch (Exception e) {
+                                                throw new CompletionException(e);
+                                            }
+                                        }, executor));
                             }
                         }
-                        else if(filename.contains(".zip"))
+
+                        for (int i = 0; i < futures.size(); ++i)
                         {
-                            File temp = Files.createTempFile("", "").toFile();
-                            try (ZipInputStream zis = new ZipInputStream(new BufferedInputStream(new FileInputStream(filename)));
-                                 BufferedInputStream bis = new BufferedInputStream(new FileInputStream(temp)))
-                            {
-                                zis.getNextEntry();
-                                FileOutputStream fos = new FileOutputStream(temp);
-                                byte[] buffer = new byte[1024];
-                                int len;
-                                while ((len = zis.read(buffer)) > 0) {
-                                    fos.write(buffer, 0, len);
-                                }
-                                fos.close();
-                                ObjectInputStream ois = new ObjectInputStream(bis);
-                                cs.setWorkersHashMap((HashMap<String, Worker>)ois.readObject());
-                            }
-                            temp.delete();
+                            if (!futures.get(i).isCompletedExceptionally())
+                                cs.addWorker(futures.get(i).get());
+                            else
+                                throw new Exception("Thread error!");
                         }
+                    } catch (Exception e) {
+                        throw e;
+                    } finally {
+                        ((ExecutorService) executor).shutdown();
                     }
                 }
                 else
@@ -373,5 +402,63 @@ public class Controller
         }
         while (!end);
         ss.popCurrent();
+    }
+
+    static void saveGZIP(Worker worker, String fileName) throws IOException
+    {
+        File file = new File(fileName);
+        try (FileOutputStream fos = new FileOutputStream(file);
+             GZIPOutputStream gos = new GZIPOutputStream(fos);
+             ObjectOutputStream oos = new ObjectOutputStream(gos))
+        {
+            oos.writeObject(worker);
+        }
+    }
+
+    static void  saveZIP(Worker worker, String fileName) throws IOException
+    {
+        File file = new File(fileName);
+        try (FileOutputStream fos = new FileOutputStream(file);
+             ZipOutputStream zos = new ZipOutputStream(fos);)
+        {
+            ZipEntry ze = new ZipEntry("Backup");
+            zos.putNextEntry(ze);
+            ObjectOutputStream oos = new ObjectOutputStream(zos);
+            oos.writeObject(worker);
+            oos.close();
+        }
+    }
+
+    static Worker readGZIP(File file) throws IOException, ClassNotFoundException
+    {
+        try(FileInputStream fis = new FileInputStream(file);
+            GZIPInputStream gis = new GZIPInputStream(fis);
+            ObjectInputStream ois = new ObjectInputStream(gis))
+        {
+            return (Worker)ois.readObject();
+        }
+    }
+
+    static Worker readZIP(File file) throws IOException, ClassNotFoundException
+    {
+        File temp = Files.createTempFile("", "").toFile();
+        try (FileInputStream fis = new FileInputStream(file);
+             ZipInputStream zis = new ZipInputStream(new BufferedInputStream(fis));
+             BufferedInputStream bis = new BufferedInputStream(new FileInputStream(temp)))
+        {
+            zis.getNextEntry();
+            FileOutputStream fos = new FileOutputStream(temp);
+            byte[] buffer = new byte[1024];
+            int len;
+            while ((len = zis.read(buffer)) > 0) {
+                fos.write(buffer, 0, len);
+            }
+            fos.close();
+            ObjectInputStream ois = new ObjectInputStream(bis);
+            return (Worker)ois.readObject();
+        }
+        finally {
+            temp.delete();
+        }
     }
 }
