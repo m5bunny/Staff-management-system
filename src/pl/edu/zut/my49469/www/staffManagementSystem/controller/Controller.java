@@ -31,6 +31,11 @@ public class Controller
         return instance;
     }
 
+    ControlSystem getCs()
+    {
+        return cs;
+    }
+
     public static void main(String[] args)
     {
         Controller ctrl = Controller.getInstance();
@@ -82,7 +87,7 @@ public class Controller
         }
     }
 
-    private static boolean verifyId(String _id)
+    static boolean verifyId(String _id)
     {
         if (_id.length() != 11)
             return false;
@@ -94,7 +99,7 @@ public class Controller
         return sum == (_id.charAt(10) - '0');
     }
 
-    private static void showStaff()
+    static void showStaff()
     {
         char choose;
         Hashtable<String, Worker> workers = cs.getWorkersHashMap();
@@ -149,7 +154,7 @@ public class Controller
         }
         while(!end);
     }
-    private static void addEmployee()
+    static void addEmployee()
     {
         char choose;
         boolean end = false;
@@ -168,10 +173,6 @@ public class Controller
                 }
                 System.out.printf("%-30s:\t\t", "id");
                 String id = scanner.next();
-                if (!verifyId(id))
-                    throw new Exception("The id is invalid!");
-                if (cs.getWorkersHashMap().get(id) != null)
-                    throw new Exception("The worker with this id exist");
                 System.out.printf("%-30s:\t\t", "First name");
                 String firstName = scanner.next();
                 System.out.printf("%-30s:\t\t", "Last name");
@@ -190,7 +191,7 @@ public class Controller
                     long expenseLimit = scanner.nextLong();
                     System.out.printf("%s\n:", "Save [y] - yes, [n] - no");
                     if (scanner.next().charAt(0) == 'y')
-                        cs.addWorker(id, firstName, lastName, salary, businessPhone, serviceBonus, cartNumber, expenseLimit);
+                        addDirector(id, firstName, lastName, salary, businessPhone, serviceBonus, cartNumber, expenseLimit);
                 }
                 else if (choose == 's')
                 {
@@ -202,7 +203,7 @@ public class Controller
                     long commissionLimit = scanner.nextLong();
                     System.out.printf("%s\n:", "Save [y]es, [n]o");
                     if (scanner.next().charAt(0) == 'y')
-                        cs.addWorker(id, firstName, lastName, salary, businessPhone, position, commission, commissionLimit);
+                        addSeller(id, firstName, lastName, salary, businessPhone, position, commission, commissionLimit);
                 }
             }
         }));
@@ -223,7 +224,7 @@ public class Controller
         while (!end);
         ss.popCurrent();
     }
-    private static void removeEmployee()
+    static void removeEmployee()
     {
         char choose;
         boolean end = false;
@@ -262,7 +263,8 @@ public class Controller
         while (!end);
         ss.popCurrent();
     }
-    private static void backup()
+
+    static void backup()
     {
         char choose;
         boolean end = false;
@@ -278,109 +280,13 @@ public class Controller
                 {
                     System.out.printf("%-30s:\t\t", "[Z]ip/[G]zip");
                     choose = scanner.next().charAt(0);
-                    String fileName = LocalDate.now().toString();
-                    if (choose == 'z' || choose == 'g')
-                    {
-                        char fileChoose = choose;
-                        System.out.printf("%-30s:\t\t%s\n", "File name", fileName);
-                        System.out.printf("%-30s\t\t\n", "[S]ave/[B]ack");
-                        File dir = new File(fileName);
-                        dir.mkdir();
-                        String fileExtension = (fileChoose == 'z') ? ".zip" : ".gzip";
-                        choose = scanner.next().charAt(0);
-                        if (choose == 's')
-                        {
-                            Executor executor = Executors.newFixedThreadPool(10);
-                            Hashtable<String, Worker> workers = cs.getWorkersHashMap();
-                            CompletableFuture<Void> [] futures = new CompletableFuture[workers.size()];
-
-                            int i = 0;
-                            for (Worker worker : workers.values())
-                            {
-                                String finalFileName = fileName + "/" + i + fileExtension;
-                                futures[i] = CompletableFuture.runAsync(() -> {
-                                    try {
-                                        if (fileChoose == 'z') {
-                                            saveZIP(worker, finalFileName);
-                                        } else
-                                            saveGZIP(worker, finalFileName);
-                                    } catch (Exception e) {
-                                        throw new CompletionException(e);
-                                    }
-                                }, executor);
-                                ++i;
-                            }
-                            try {
-                                CompletableFuture.allOf(futures).get();
-                            } catch (InterruptedException | ExecutionException e)
-                            {
-                                throw e;
-                            }
-                            ((ExecutorService) executor).shutdown();
-                            for (int j = 0; j < futures.length; ++j)
-                            {
-                                if (futures[j].isCompletedExceptionally())
-                                {
-                                    throw new Exception("Thread error!");
-                                }
-                            }
-                        }
-                    }
-                    else
-                        throw new Exception("There is not such an option, try again");
+                    doSerialize(choose);
                 }
                 else if (choose == 'o')
                 {
                     System.out.printf("%-30s:\t\t", "File name");
                     String filename = scanner.next();
-                    String fileExtension;
-                    if (filename.contains(".gzip"))
-                    {
-                        fileExtension = ".gzip";
-                        filename = filename.substring(0, filename.length() - 5);
-                    }
-                    else if(filename.contains(".zip"))
-                    {
-                        fileExtension = ".zip";
-                        filename = filename.substring(0, filename.length() - 4);
-                    }
-                    else
-                        throw new Exception("Wrong file extension");
-                    Executor executor = Executors.newFixedThreadPool(10);
-                    try {
-                        File dir = new File(filename);
-                        File [] files = dir.listFiles();
-                        List<CompletableFuture<Worker>> futures = new ArrayList<>();
-                        for (File file : files)
-                        {
-                            if (file.getName().contains(fileExtension))
-                            {
-                                futures.add(CompletableFuture.supplyAsync(
-                                        () -> {
-                                            try {
-                                                if (fileExtension.equals(".zip"))
-                                                    return readZIP(file);
-                                                else
-                                                    return readGZIP(file);
-                                            } catch (Exception e) {
-                                                throw new CompletionException(e);
-                                            }
-                                        }, executor));
-                            }
-                        }
-
-                        for (int i = 0; i < futures.size(); ++i)
-                        {
-                            if (!futures.get(i).isCompletedExceptionally())
-                                cs.addWorker(futures.get(i).get());
-                            else
-                                throw new Exception("Thread error!");
-                        }
-                    } catch (Exception e) {
-                        throw e;
-                    } finally {
-                        ((ExecutorService) executor).shutdown();
-                    }
+                    doDeserialize(filename);
                 }
                 else
                     throw new Exception("There is not such an option, try again");
@@ -459,6 +365,133 @@ public class Controller
         }
         finally {
             temp.delete();
+        }
+    }
+
+    static void verifyWorker(String _id) throws IllegalArgumentException
+    {
+        if (!verifyId(_id))
+            throw new IllegalArgumentException("The id is invalid!");
+        if (cs.getWorkersHashMap().get(_id) != null)
+            throw new IllegalArgumentException("The worker with this id exist");
+    }
+
+    static void addSeller(String _id, String _firstName, String _lastName, long _salary, String _businessPhone,
+                             String _position, int _commission, long _commissionLimit) throws IllegalArgumentException
+    {
+        verifyWorker(_id);
+        cs.addWorker(_id, _firstName, _lastName, _salary, _businessPhone, _position, _commission, _commissionLimit);
+    }
+
+    static void addDirector(String _id, String _firstName, String _lastName, long _salary, String _businessPhone,
+                               long _serviceBonus, String _cartNumber, long _expenseLimi) throws IllegalArgumentException
+    {
+        verifyWorker(_id);
+        cs.addWorker(_id, _firstName, _lastName, _salary, _businessPhone, _serviceBonus, _cartNumber, _expenseLimi);
+    }
+
+    static void doRemoveEmployee(String id) throws IllegalArgumentException
+    {
+        if(cs.getWorkersHashMap().get(id) == null)
+            throw new IllegalArgumentException("There is no such a worker, try again");
+        cs.getWorkersHashMap().remove(id);
+    }
+
+    static void doSerialize(char choose) throws Exception
+    {
+        if (choose == 'z' || choose == 'g')
+        {
+            String fileName = LocalDate.now().toString();
+            char fileChoose = choose;
+            File dir = new File(fileName);
+            dir.mkdir();
+            String fileExtension = (fileChoose == 'z') ? ".zip" : ".gzip";
+
+            Executor executor = Executors.newFixedThreadPool(10);
+            Hashtable<String, Worker> workers = cs.getWorkersHashMap();
+            CompletableFuture<Void> [] futures = new CompletableFuture[workers.size()];
+
+            int i = 0;
+            for (Worker worker : workers.values())
+            {
+                String finalFileName = fileName + "/" + i + fileExtension;
+                futures[i] = CompletableFuture.runAsync(() -> {
+                    try {
+                        if (fileChoose == 'z') {
+                            saveZIP(worker, finalFileName);
+                        } else
+                            saveGZIP(worker, finalFileName);
+                        } catch (Exception e) {
+                            throw new CompletionException(e);
+                        }
+                    }, executor);
+                ++i;
+            }
+            try {
+                CompletableFuture.allOf(futures).get();
+            } catch (InterruptedException | ExecutionException e)
+            {
+                throw e;
+            }
+            ((ExecutorService) executor).shutdown();
+            for (int j = 0; j < futures.length; ++j)
+            {
+                if (futures[j].isCompletedExceptionally())
+                {
+                    throw new Exception("Thread error!");
+                }
+            }
+        }
+        else
+            throw new IllegalArgumentException("There is not such an option, try again");
+    }
+
+    static void doDeserialize(String filename)  throws Exception
+    {
+        String fileExtension;
+        if (filename.contains(".gzip"))
+        {
+            fileExtension = ".gzip";
+            filename = filename.substring(0, filename.length() - 5);
+        }
+        else if(filename.contains(".zip"))
+        {
+            fileExtension = ".zip";
+            filename = filename.substring(0, filename.length() - 4);
+        }
+        else
+            throw new Exception("Wrong file extension");
+        Executor executor = Executors.newFixedThreadPool(10);
+        try {
+            File dir = new File(filename);
+            File [] files = dir.listFiles();
+            List<CompletableFuture<Worker>> futures = new ArrayList<>();
+            for (File file : files)
+            {
+                if (file.getName().contains(fileExtension))
+                {
+                    futures.add(CompletableFuture.supplyAsync(
+                            () -> {
+                                try {
+                                    if (fileExtension.equals(".zip"))
+                                        return readZIP(file);
+                                    else
+                                        return readGZIP(file);
+                                } catch (Exception e) {
+                                    throw new CompletionException(e);
+                                }
+                            }, executor));
+                }
+            }
+            for (int i = 0; i < futures.size(); ++i)
+            {
+                if (!futures.get(i).isCompletedExceptionally())
+                    cs.addWorker(futures.get(i).get());
+                else
+                    throw new Exception("Thread error!");
+            }
+        } finally {
+            ((ExecutorService) executor).shutdown();
         }
     }
 }
